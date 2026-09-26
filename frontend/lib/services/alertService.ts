@@ -52,3 +52,10 @@ export async function markAlertRead(id: string): Promise<Alert | null> {
   const alerts = await getActiveAlerts();
   return alerts.find((a) => a.id === id) ?? null;
 }
+
+export async function markAllAlertsRead(): Promise<void> {
+  const alerts = await getActiveAlerts();
+  for (const a of alerts) {
+    readAlerts.add(a.id);
+  }
+}

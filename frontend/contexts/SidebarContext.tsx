@@ -4,6 +4,8 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 
 interface SidebarContextValue {
   mobileOpen: boolean;
+  open: () => void;
+  close: () => void;
   openMobile: () => void;
   closeMobile: () => void;
   toggleMobile: () => void;
@@ -17,6 +19,8 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     <SidebarContext.Provider
       value={{
         mobileOpen,
+        open: () => setMobileOpen(true),
+        close: () => setMobileOpen(false),
         openMobile: () => setMobileOpen(true),
         closeMobile: () => setMobileOpen(false),
         toggleMobile: () => setMobileOpen((v) => !v),

@@ -6,13 +6,15 @@ import { AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/States";
 import { priorityConfig } from "@/lib/priorityConfig";
+import { timeAgo } from "@/lib/utils";
+import { markAlertRead } from "@/lib/services/alertService";
 import type { Alert } from "@/lib/types";
 
 export function ActiveAlertsPanel({ alerts }: { alerts: Alert[] }) {
   const router = useRouter();
 
   return (
-    <Card className="p-5">
+    <Card className="p-5 flex flex-col">
       <CardHeader>
         <CardTitle>Active Alerts</CardTitle>
         <Link href="/inspections" className="text-xs font-medium text-primary hover:underline">
@@ -20,30 +22,39 @@ export function ActiveAlertsPanel({ alerts }: { alerts: Alert[] }) {
         </Link>
       </CardHeader>
       {alerts.length === 0 ? (
-        <EmptyState icon={<AlertTriangle size={20} />} title="No active alerts" description="You're all caught up." />
+        <EmptyState
+          icon={<AlertTriangle size={22} />}
+          title="No active alerts"
+          description="P1–P3 detections will appear here as they're found."
+        />
       ) : (
-        <div className="space-y-1 max-h-[260px] overflow-y-auto pr-1">
+        <div className="space-y-1 max-h-[280px] overflow-y-auto pr-1">
           {alerts.map((alert) => {
-            const color = priorityConfig[alert.priority].color;
+            const c = priorityConfig[alert.priority];
             return (
               <button
                 key={alert.id}
-                onClick={() => router.push(`/inspections/${alert.inspectionId}`)}
+                onClick={async () => {
+                  await markAlertRead(alert.id);
+                  router.push(`/inspections/${alert.inspectionId}`);
+                }}
                 className="w-full flex items-start gap-3 text-left px-2 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
               >
                 <span
                   className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: `${color}1A`, color }}
+                  style={{ backgroundColor: `${c.color}1A`, color: c.color }}
                 >
                   <AlertTriangle size={15} />
                 </span>
-                <span className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{alert.title}</div>
-                  <div className="text-xs text-slate-400 truncate">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                    {alert.title}
+                  </span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
                     {alert.road}, {alert.area}
-                  </div>
+                  </span>
                 </span>
-                <span className="text-[11px] text-slate-400 shrink-0 whitespace-nowrap">{alert.relativeTime}</span>
+                <span className="text-[11px] text-slate-400 shrink-0 pt-0.5">{alert.createdAt ? timeAgo(alert.createdAt) : alert.relativeTime}</span>
               </button>
             );
           })}

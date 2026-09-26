@@ -10,15 +10,14 @@ import {
   Map,
   Radio,
   Search,
-  Settings,
+  Settings as SettingsIcon,
   Upload,
-  User,
   Video,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSidebar } from "@/contexts/SidebarContext";
 import { useCamera } from "@/contexts/CameraContext";
+import { Button } from "@/components/ui/Button";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -29,90 +28,130 @@ const NAV_ITEMS = [
   { href: "/detections", label: "Detection Explorer", icon: Search },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/reports", label: "Reports", icon: FileText },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { mobileOpen, closeMobile } = useSidebar();
   const { connected } = useCamera();
 
   return (
-    <>
-      {mobileOpen && <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={closeMobile} />}
-      <aside
-        className={cn(
-          "fixed lg:static inset-y-0 left-0 z-50 w-60 shrink-0 bg-sidebar text-white flex flex-col transition-transform lg:translate-x-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <div className="flex items-center justify-between px-5 py-5">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
-            <span className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shrink-0">
-              <Map size={18} className="text-white" />
-            </span>
-            <span>
-              <div className="text-sm font-bold tracking-wide">ROADVISION</div>
-              <div className="text-[10px] text-slate-400 -mt-0.5">Smart Road Monitoring</div>
-            </span>
-          </Link>
-          <button onClick={closeMobile} className="lg:hidden text-slate-400">
-            <X size={18} />
-          </button>
+    <aside className="w-full h-full bg-sidebar text-slate-300 flex flex-col">
+      {/* Brand */}
+      <div className="flex items-center justify-between px-5 pt-6 pb-5">
+        <Link href="/dashboard" className="flex items-center gap-2.5" onClick={onNavigate}>
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shrink-0">
+            <RoadPinMark />
+          </div>
+          <div className="leading-tight">
+            <div className="text-white font-bold text-[15px] tracking-tight">ROADVISION</div>
+            <div className="text-[11px] text-slate-400">Smart Road Monitoring</div>
+          </div>
+        </Link>
+        <button
+          className="lg:hidden text-slate-400 hover:text-white"
+          onClick={onNavigate}
+          aria-label="Close menu"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 space-y-1">
+        {NAV_ITEMS.map((item) => {
+          const active = pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href));
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-colors",
+                active ? "bg-primary text-white" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+              )}
+            >
+              <Icon size={17} className="shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Inspection Source widget */}
+      <div className="mx-3 mb-4 mt-2 p-4 rounded-2xl bg-white/[0.04] border border-white/5">
+        <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2.5">
+          Inspection Source
         </div>
-
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + "/");
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={closeMobile}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors",
-                  active ? "bg-primary text-white" : "text-slate-300 hover:bg-white/5"
-                )}
-              >
-                <Icon size={17} />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="mx-3 mb-3 rounded-2xl border border-white/10 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Inspection Source</div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className={cn("w-2 h-2 rounded-full", connected ? "bg-green-400" : "bg-slate-500")} />
-            <div>
-              <div className="text-sm font-medium">Live Camera</div>
-              <div className="text-[11px] text-slate-400">{connected ? "Connected" : "Not Connected"}</div>
+        <div className="flex items-center gap-2 mb-3">
+          <span
+            className={cn(
+              "w-2 h-2 rounded-full",
+              connected ? "bg-green-400" : "bg-slate-500"
+            )}
+          />
+          <div className="text-sm text-slate-200">
+            Live Camera
+            <div className={cn("text-xs", connected ? "text-green-400" : "text-slate-500")}>
+              {connected ? "Connected" : "Not Connected"}
             </div>
           </div>
-          <div className="flex items-center justify-center h-14 rounded-xl bg-white/5 mb-3">
-            <Video size={20} className="text-slate-500" />
-          </div>
-          <button
-            onClick={() => router.push("/live")}
-            className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-dark text-white text-xs font-semibold py-2.5 rounded-xl transition-colors"
-          >
-            <Video size={14} /> Connect Camera
-          </button>
         </div>
+        <div className="flex justify-center py-3">
+          <CameraIllustration connected={connected} />
+        </div>
+        <Button
+          className="w-full"
+          size="sm"
+          onClick={() => {
+            router.push("/live");
+            onNavigate?.();
+          }}
+        >
+          <Video size={14} />
+          Connect Camera
+        </Button>
+      </div>
 
-        <div className="flex items-center gap-2.5 px-5 py-4 border-t border-white/10">
-          <span className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
-            <User size={13} />
-          </span>
-          <div>
-            <div className="text-xs font-medium">RoadVision v1.0</div>
-            <div className="text-[10px] text-slate-500">© 2024 All rights reserved</div>
-          </div>
+      {/* Footer */}
+      <div className="px-5 py-4 border-t border-white/5 flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-slate-300 text-xs font-semibold">
+          RV
         </div>
-      </aside>
-    </>
+        <div className="leading-tight">
+          <div className="text-xs text-slate-300">RoadVision v1.0</div>
+          <div className="text-[10px] text-slate-500">© 2024 All rights reserved</div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function RoadPinMark() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 2C8 2 5 5.2 5 9.2C5 14.7 12 22 12 22C12 22 19 14.7 19 9.2C19 5.2 16 2 12 2Z"
+        fill="white"
+        fillOpacity="0.95"
+      />
+      <path d="M8.5 12L10.5 9L12.2 11L14 8L15.5 12" stroke="#4448D4" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CameraIllustration({ connected }: { connected: boolean }) {
+  return (
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+      <circle cx="28" cy="28" r="27" stroke="#333A5C" strokeDasharray="3 4" />
+      <rect x="16" y="22" width="24" height="16" rx="3" fill="#1E2340" stroke="#3A4066" />
+      <circle cx="28" cy="30" r="5.5" fill={connected ? "#22c55e" : "#3A4066"} />
+      <circle cx="28" cy="30" r="2.5" fill="#12172B" />
+      <rect x="24" y="17" width="8" height="5" rx="1.5" fill="#1E2340" stroke="#3A4066" />
+      <line x1="28" y1="38" x2="28" y2="46" stroke="#3A4066" strokeWidth="2" />
+      <line x1="20" y1="46" x2="36" y2="46" stroke="#3A4066" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }
