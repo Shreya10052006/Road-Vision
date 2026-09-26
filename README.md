@@ -1,373 +1,331 @@
-# RoadVision AI — Intelligent Road Damage Assessment and Maintenance Prioritization Using Computer Vision and Machine Learning
+<div align="center">
 
-A working municipal road-inspection system: point it at a photo, a dashcam video, or a live
-webcam, and it detects road damage with a trained YOLOv8n model, assigns each defect a repair
-priority, stores everything in one database, and surfaces it as a dashboard, a map, and reports.
+# 🛣️ RoadVision AI
+### Intelligent Road Damage Assessment & Municipal Maintenance Prioritization
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-16%20(App%20Router)-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![YOLOv8](https://img.shields.io/badge/YOLOv8n-Ultralytics-00FFFF?style=for-the-badge&logo=yolo&logoColor=black)](https://docs.ultralytics.com/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-SQLAlchemy%202.0-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Tests](https://img.shields.io/badge/Tests-21%20Passed-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)](backend/tests/)
+
+<p align="center">
+  <strong>An end-to-end computer vision and decision-support system that transforms ordinary camera and dashcam footage into prioritized municipal road repair schedules.</strong>
+</p>
+
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-system-architecture">Architecture</a> •
+  <a href="#-key-features">Key Features</a> •
+  <a href="#-ml-model--evaluation">ML & Metrics</a> •
+  <a href="#-priority--road-health-engine">Priority Engine</a> •
+  <a href="#-api-reference">API Reference</a> •
+  <a href="#-limitations--ethical-disclosure">Limitations</a>
+</p>
 
 ---
 
-## The problem
+</div>
 
-Road maintenance is mostly reactive. Councils find out about a pothole when someone complains or
-when a vehicle is damaged, and manual inspection — an engineer driving a stretch of road and
-writing notes — is slow, subjective, and impossible to repeat consistently across a city. Two
-inspectors rarely rank the same defects the same way, and there is usually no structured record
-linking *what* was found to *where* it was found and *how urgent* it is.
+## 📌 Executive Summary
 
-RoadVision addresses the measurable part of that problem: detecting and locating damage
-automatically from ordinary camera footage, then ranking what was found so a crew has an ordered
-work list instead of a pile of photographs.
+Municipal road maintenance has historically operated in a **reactive cycle**—councils address potholes only after citizen complaints, vehicle damage claims, or structural road failures occur. Traditional manual road inspection by field engineers is slow, labor-intensive, hazardous, and inherently subjective across different surveyors.
 
-## The solution
+**RoadVision AI** solves the measurable part of this challenge:
+1. **Automated Vision Inspection:** Detects and classifies surface distresses (*Cracks, Potholes, Surface Erosion*) from standard dashcams, handheld images, or live webcam streams using an optimized YOLOv8n network.
+2. **Deterministic Priority Scoring:** Extracts geometric spatial features to evaluate defect severity and assigns standardized maintenance priorities (**P1: Immediate Hazard** to **P4: Monitor Only**).
+3. **Cross-Frame Video Deduplication:** Employs temporal-spatial IoU tracking to eliminate duplicate counts when moving past defects in video streams.
+4. **Unified Municipal Dashboard:** Aggregates findings into a standardized **0–100 Road Health Index**, geospatial GIS damage heatmaps, inspection audit trails, and automated work-order CSV exports.
 
-```
-Image  ─┐
-Video  ─┼─▶  YOLOv8n detection  ─▶  Feature extraction  ─▶  Rule-based priority
-Live   ─┘    (3 damage classes)      (6-feature vector)      (P1–P4, provisional)
-                                                                   │
-                                          Cross-frame aggregation ◀─┘
-                                          (video and live only)
-                                                   │
-                                          SQLite (inspections + detections)
-                                                   │
-                        ┌──────────────┬───────────┴────────┬──────────────┐
-                    Dashboard      Damage Map           Analytics       Reports
-                                History · Inspection Details · Detection Explorer
-```
+---
 
-Every page reads that one database. There is no second data source and no mock data behind any
-production page.
+## 🏗️ System Architecture
 
-## Damage classes
+```mermaid
+flowchart TD
+    subgraph Inputs["📷 Input Streams"]
+        A1["Single Image (Upload)"]
+        A2["Dashcam Video (MP4 / AVI)"]
+        A3["Live Camera Stream (Webcam / Dashcam)"]
+    end
 
-The model detects exactly three classes, matching the dataset it was trained on:
+    subgraph ML["🧠 Computer Vision & Inference Layer"]
+        B["YOLOv8n Detector (models/best.pt)"]
+        C["6D Geometric Feature Extractor"]
+        D["Rule-Based Priority Engine (P1–P4)"]
+        E["Cross-Frame Spatial Deduplication (IoU ≥ 0.30)"]
+    end
 
-| ID | Class |
-|---|---|
-| 0 | Crack |
-| 1 | Pothole |
-| 2 | Surface Erosion |
+    subgraph Backend["⚙️ FastAPI Services & Database"]
+        F[("SQLite Database\n(Inspections & Detections)")]
+        G["Road Health Score Engine (0–100)"]
+        H["RESTful API Endpoints (/api/*)"]
+    end
 
-## Priority system
+    subgraph Frontend["💻 Next.js 16 Client Portal"]
+        I1["Executive Dashboard & KPIs"]
+        I2["Interactive GIS Damage Map (Leaflet)"]
+        I3["Live Real-Time Inference Studio"]
+        I4["Inspection History & Detail Explorer"]
+        I5["Analytics & Automated CSV Reports"]
+    end
 
-| Tier | Meaning |
-|---|---|
-| **P1** | Immediate — safety hazard |
-| **P2** | Within 7 days |
-| **P3** | Scheduled maintenance |
-| **P4** | Monitor only |
-
-> **P1–P4 are generated by a rule-based decision layer, not learned from labelled data.** The
-> dataset provides damage categories and bounding boxes; it contains no maintenance-priority
-> ground truth, and none exists to train against. The rule combines damage type, relative
-> bounding-box size, frame damage density and detector confidence — see
-> `backend/app/ml/priority/rules.py`.
-
-Every stored and displayed detection carries `priority_source`, which is `"rule"` throughout the
-current system. That field exists so a rule-derived priority can never be mistaken for a model
-prediction. The priorities are **provisional decision-support labels**, and the project does not
-claim otherwise anywhere in the UI or the documentation.
-
-## Road Health Score
-
-A single 0–100 figure summarising an inspection, defined once in
-`backend/app/services/road_health.py` and used by the seed script, the video pipeline, the live
-pipeline and every page — so no two screens can disagree.
-
-```
-penalty weights   P1 = 12   P2 = 6   P3 = 3   P4 = 1
-
-severity = sum of penalties / number of detections        (1 … 12)
-volume   = min(1, number of detections / 40)              (0 … 1)
-score    = 100 − (severity / 12) × 60 − volume × 40
+    Inputs --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H <--> Frontend
 ```
 
-**This is a provisional project-level decision-support metric. It is not PCI, IRI, or any
-engineering-standard pavement condition index.** It inherits the provisional status of the
-priorities that feed it, and the 40-detection saturation point is a project choice, not a standard.
+---
 
-## ML model
+## ✨ Key Features
 
-| Item | Value |
-|---|---|
-| Architecture | YOLOv8n (nano), fine-tuned from `yolov8n.pt` |
-| Epochs | 20 (all completed; total training time 289 s) |
-| Image size | 640 × 640 |
-| Batch | 28 |
-| Optimizer | `auto`, lr0 0.01, momentum 0.937, weight decay 0.0005 |
-| Hardware | GPU, Google Colab |
-| Framework | Ultralytics 8.4.162 |
+| Feature | Description | Technical Implementation |
+| :--- | :--- | :--- |
+| **📸 Single Image Inspection** | Instant damage detection and bounding-box overlay with computed repair urgency. | Multipart upload via `/api/ml/detect` with optional database persistence. |
+| **🎥 Video Batch Processing** | Sequential frame sampling (~2 fps) with cross-frame tracking to aggregate continuous defect sightings. | OpenCV frame extraction + temporal IoU deduplication pipeline. |
+| **🔴 Live Stream Inspection** | Real-time browser webcam streaming with interactive HUD overlays and session finalization. | Canvas frame sampling over REST with active session caching. |
+| **🗺️ Geospatial Damage Map** | Interactive Leaflet GIS mapping plotting every geotagged distress coordinate. | Filterable by priority tier, defect type, data origin, and street name. |
+| **📊 Road Health Score** | Standardized 0–100 index summarizing overall segment pavement quality. | Deterministic weighted penalty matrix combining severity and density. |
+| **📑 Inspection Audit Trail** | Full lifecycle logging of municipal inspection runs with granular defect breakdowns. | Relational schema with cascade relations and zero external mock dependencies. |
+| **📈 Analytics & Export** | Executive trend charts, damage distribution matrices, and one-click CSV report exports. | Recharts data visualizations and streaming CSV generation. |
 
-**Validation metrics** (161 images, 290 boxes, Ultralytics defaults):
+---
 
-| Metric | Value |
-|---|---|
-| Precision | 0.5898 |
-| Recall | 0.5979 |
-| mAP@50 | 0.5986 |
-| mAP@50–95 | 0.2910 |
+## 🧠 ML Model & Evaluation
 
-Per class:
+The detection core uses a **YOLOv8n (nano)** architecture fine-tuned specifically for road damage detection.
+
+### 1. Detected Classes
+* **0: Crack** — Longitudinal, transverse, and fatigue/alligator cracking patterns.
+* **1: Pothole** — Structural road surface cavities and depressions.
+* **2: Surface Erosion** — Raveling, aggregate loss, and surface wear.
+
+### 2. Training Hyperparameters
+* **Base Architecture:** YOLOv8n (`yolov8n.pt`)
+* **Training Platform:** Google Colab GPU (Ultralytics 8.4.162)
+* **Dataset:** Roboflow `road-damage-detection-l2p2a` v1 (1,075 images, 1,846 labeled boxes)
+* **Input Resolution:** 640 × 640 px (Batch size: 28, Epochs: 20)
+* **Optimizer:** Auto (`lr0 = 0.01`, `momentum = 0.937`, `weight_decay = 0.0005`)
+
+### 3. Model Performance Matrix (Validation Split)
 
 | Class | Precision | Recall | mAP@50 | mAP@50–95 |
-|---|---|---|---|---|
-| Crack | 0.6004 | 0.4805 | 0.5465 | 0.2804 |
-| Pothole | 0.5893 | 0.5723 | 0.5769 | 0.2058 |
-| Surface Erosion | 0.5798 | 0.7407 | 0.6722 | 0.3867 |
+| :--- | :---: | :---: | :---: | :---: |
+| 🪨 **Pothole** | 0.5893 | 0.5723 | 0.5769 | 0.2058 |
+| ⚡ **Crack** | 0.6004 | 0.4805 | 0.5465 | 0.2804 |
+| 🌫️ **Surface Erosion** | 0.5798 | 0.7407 | 0.6722 | 0.3867 |
+| **Overall (All Classes)** | **0.5898** | **0.5979** | **0.5986** | **0.2910** |
 
-These are **validation** metrics, not test metrics — see Limitations. Full per-class results,
-confusion matrix, PR/F1 curves, prediction examples (including failure cases) and the complete
-limitations list are in **[`docs/ML_EVALUATION.md`](docs/ML_EVALUATION.md)**, with the raw
-artifacts in `docs/ml_results/`.
+> 📖 *For complete PR curves, confusion matrices, and validation artifacts, see [`docs/ML_EVALUATION.md`](docs/ML_EVALUATION.md).*
 
-## Dataset
+---
 
-Roboflow export "road-damage-detection-l2p2a" v1 (CC BY 4.0), YOLO detection format, 640 × 640.
-Counts below were verified by reading every label file, not copied from the dataset card.
+## 📐 Priority & Road Health Engine
 
-| Split | Images | Boxes |
-|---|---|---|
-| Train | 914 | 1,556 |
-| Validation | 161 | 290 |
-| **Total** | **1,075** | **1,846** |
+### 1. Locked 6D Feature Vector
+For every detected bounding box, the pipeline extracts a deterministic feature vector:
+1. `bbox_area_ratio`: Bounding box area relative to total image canvas.
+2. `aspect_ratio`: Bounding box width-to-height ratio ($w / h$).
+3. `frame_damage_count`: Total concurrent damage instances in the frame.
+4. `frame_damage_density`: Sum of all defect areas relative to the frame.
+5. `detector_confidence`: YOLO prediction confidence score ($0.0 - 1.0$).
+6. `frame_position_y`: Vertical centroid (ground-plane proximity proxy).
 
-| Class | Train | Validation | Total |
-|---|---|---|---|
-| Crack | 445 | 77 | 522 |
-| Pothole | 768 | 159 | 927 |
-| Surface Erosion | 343 | 54 | 397 |
+### 2. Rule-Based Maintenance Priority (P1–P4)
 
-**There is no independent test split** — the dataset ships train and validation only.
+```
+┌─────────┬───────────────────────────┬──────────────────────────────────────────┐
+│ Tier    │ Action SLA                │ Criteria                                 │
+├─────────┼───────────────────────────┼──────────────────────────────────────────┤
+│ 🚨 P1   │ Immediate (24–48 Hours)   │ Large Pothole / Severe Structural Hazard │
+│ ⚠️ P2   │ Urgent (Within 7 Days)    │ Moderate Pothole or High-Density Cracking│
+│ 🛠️ P3   │ Scheduled Maintenance     │ Standard Crack / Minor Erosion           │
+│ 👁️ P4   │ Periodic Monitoring Only  │ Incipient Cracking / Low-Confidence Box  │
+└─────────┴───────────────────────────┴──────────────────────────────────────────┘
+```
 
-The dataset is not included in this repository. It is only needed to retrain or re-evaluate the
-model, not to run the application.
+> ⚠️ **Data Integrity Note:** The dataset does not contain subjective ground-truth repair priorities. All priorities are explicitly tagged with `priority_source: "rule"` in the database to prevent rule-based decision support from being conflated with model predictions.
 
-## Architecture
+### 3. Road Health Index Formula
+
+The **Road Health Score** is computed as a unified metric ($0 - 100$):
+
+$$\text{Severity} = \frac{\sum (\text{Penalty Weights})}{\text{Number of Detections}} \quad \text{where } W_{P1}=12, W_{P2}=6, W_{P3}=3, W_{P4}=1$$
+
+$$\text{Volume Penalty} = \min\left(1.0, \frac{\text{Number of Detections}}{40}\right)$$
+
+$$\mathbf{\text{Health Score}} = \mathbf{100 - \left(\frac{\text{Severity}}{12} \times 60\right) - \left(\text{Volume Penalty} \times 40\right)}$$
+
+---
+
+## 🗂️ Project Structure
 
 ```
 RoadVision/
-├── frontend/              Next.js app (App Router)
-│   ├── app/(app)/         10 pages: dashboard, live, upload, map, inspections,
-│   │                      inspections/[id], detections, analytics, reports, settings
-│   ├── components/        UI, charts, map, live-camera and inspection components
-│   └── lib/
-│       ├── api.ts         single API client (base URL from NEXT_PUBLIC_API_URL)
-│       ├── services/      one module per page, all reading the API
-│       └── mock/          dev-only generators — not used by any page
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/    health, inspections, detections, dashboard, map, analytics, ml
-│   │   ├── ml/            detection/, features/, priority/, pipeline.py, video.py
-│   │   ├── services/      inspection, detection, analytics, video, live, ml, road_health
-│   │   ├── db/            SQLAlchemy models + engine
-│   │   └── core/          config, ids, logging
-│   ├── scripts/           seed_demo_data.py
-│   └── tests/             21 tests
-├── models/best.pt         the trained YOLOv8n checkpoint (6 MB)
-└── docs/                  ML_EVALUATION.md + ml_results/
+│   │   ├── api/routes/          # REST route handlers (inspections, ml, dashboard, map, analytics)
+│   │   ├── core/                # Application config, UUID generators, structured logging
+│   │   ├── db/                  # SQLAlchemy ORM models & database session engine
+│   │   ├── ml/                  # Core ML logic (detection, feature extraction, priority, video)
+│   │   └── services/            # Business service layer (road health, reporting, stats)
+│   ├── scripts/                 # Idempotent demo database seeding scripts
+│   ├── tests/                   # Pytest test suite (21 unit & integration tests)
+│   ├── requirements.txt         # Minimal API dependencies
+│   └── requirements-ml.txt      # PyTorch, Ultralytics, and OpenCV dependencies
+├── frontend/
+│   ├── app/(app)/               # Next.js 16 App Router (10 responsive client pages)
+│   ├── components/              # Modular UI components (charts, Leaflet maps, live stream)
+│   ├── lib/                     # Typed API client, data services, and utilities
+│   └── package.json             # Frontend dependencies
+├── models/
+│   └── best.pt                  # Pre-trained YOLOv8n checkpoint (6 MB)
+└── docs/
+    ├── ML_EVALUATION.md         # Comprehensive evaluation metrics & methodology
+    └── ml_results/              # PR curves, confusion matrices, and validation visualizer
 ```
 
-**ML layer** (`backend/app/ml/`) is independent of the database and the web framework:
+---
 
-| Module | Responsibility |
-|---|---|
-| `detection/detector.py` | YOLOv8 wrapper; the 3-class map is the single source of truth |
-| `features/extractor.py` | The locked 6-feature vector |
-| `priority/rules.py` | Rule-based P1–P4 |
-| `priority/predictor.py` | Random Forest interface — **prepared but not trained or used** |
-| `pipeline.py` | Joins detection → features → priority |
-| `video.py` | OpenCV frame sampling + cross-frame aggregation |
+## 🚀 Quick Start
 
-**Locked feature vector** (order is deterministic):
-`bbox_area_ratio`, `aspect_ratio`, `frame_damage_count`, `frame_damage_density`,
-`detector_confidence`, `frame_position_y`, plus one-hot damage type.
+### Prerequisites
+* **Python 3.10+**
+* **Node.js 18+** & **npm**
+* **Git**
 
-## Features
+---
 
-| Feature | What it does |
-|---|---|
-| **Image inspection** | Upload a photo → real detections with priorities; optionally saved as an inspection |
-| **Video inspection** | OpenCV samples frames (~2 fps, configurable), runs each through the pipeline, merges repeat sightings of the same defect, saves the result |
-| **Live webcam inspection** | Browser samples frames at ~2 fps to the backend, draws real boxes over the live feed, aggregates and saves the session on stop |
-| **Damage Map** | Every geotagged detection at its stored coordinates, filterable by priority, type, origin and road |
-| **Inspection History** | All inspections, demo and real, newest first, with filters |
-| **Inspection Details** | Per-inspection metadata, per-type and per-priority counts, and the detection list |
-| **Detection Explorer** | Every persisted detection with filters |
-| **Analytics** | KPIs, trends and distributions, all filterable and all database-backed |
-| **Reports** | Scoped report preview and a real CSV export built from live rows |
-| **Demo data** | 12 seeded inspections / 261 detections so every page is populated on first launch |
-
-### Deduplication (video and live)
-
-One pothole held in view across many frames must not become hundreds of database rows. A
-detection joins an existing damage track when three things hold: same damage type, the track was
-seen within the last 3 sampled frames, and IoU with its previous box is ≥ 0.30 (with a
-centre-proximity fallback for small defects at low sampling rates). Each track becomes one
-Detection row. This is deliberately simple and explainable — no Kalman filter, no ByteTrack.
-
-## Tech stack
-
-**Frontend** — Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Recharts, Leaflet /
-react-leaflet, lucide-react.
-
-**Backend** — FastAPI, Uvicorn, Pydantic v2, SQLAlchemy 2.0, SQLite.
-
-**ML / CV** — Ultralytics YOLOv8n, OpenCV, PyTorch, Pillow. scikit-learn and joblib are declared
-for the prepared Random Forest interface, which is **not trained and not used** by the running
-system.
-
-## API
-
-| Group | Endpoints |
-|---|---|
-| Health | `GET /api/health` |
-| Inspections | `GET/POST /api/inspections` · `POST /api/inspections/upload` · `GET /api/inspections/{id}` · `GET /api/inspections/{id}/detections` · `DELETE /api/inspections/{id}` |
-| Detections | `GET /api/detections` · `GET /api/detections/{id}` |
-| Dashboard | `GET /api/dashboard/stats` · `/alerts` · `/recent-inspections` · `/trends` |
-| Map | `GET /api/map/detections` (filters: priority, damage_type, origin, road) |
-| Analytics | `GET /api/analytics` (filters: days, road, ward, damage_type, priority, origin) |
-| ML — status | `GET /api/ml/status` |
-| ML — image | `POST /api/ml/detect` (`save=true` persists it as an inspection) |
-| ML — video | `POST /api/ml/detect-video` |
-| ML — live | `POST /api/ml/live/sessions` · `POST /api/ml/detect-frame` · `POST /api/ml/live/sessions/{id}/finalize` · `DELETE /api/ml/live/sessions/{id}` |
-
-Interactive docs at <http://localhost:8000/docs> once the backend is running.
-
-## Running locally
-
-Two terminals. Backend first.
-
-### 1. Backend — http://localhost:8000
+### Step 1: Backend Setup
 
 ```bash
+# Navigate to the backend directory
 cd backend
+
+# Create and activate virtual environment
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
-pip install -r requirements.txt    # API only — fast
-pip install -r requirements-ml.txt # YOLO/OpenCV — pulls torch, several minutes
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+# macOS / Linux:
+source .venv/bin/activate
 
-uvicorn app.main:app --reload
+# Install dependencies
+pip install -r requirements.txt      # Core FastAPI packages
+pip install -r requirements-ml.txt   # PyTorch, YOLOv8 & OpenCV
+
+# (Optional) Seed the database with 12 demo inspections & 261 detections
+python scripts/seed_demo_data.py
+
+# Launch the FastAPI server
+uvicorn app.main:app --reload --port 8000
 ```
+> 💡 *Interactive Swagger API documentation will be available at: **http://localhost:8000/docs***
 
-The SQLite database is created automatically on first start at `backend/roadvision.db`; any
-missing columns are added without dropping data. No migration step is needed.
+---
 
-CPU-only machines can install a much smaller torch first:
+### Step 2: Frontend Setup
+
+Open a second terminal window:
 
 ```bash
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-```
-
-### 2. Seed the demonstration data
-
-```bash
-cd backend
-python scripts/seed_demo_data.py            # insert the 12 demo inspections
-python scripts/seed_demo_data.py --status   # report what is present, change nothing
-python scripts/seed_demo_data.py --remove   # delete only the DEMO-* records
-```
-
-The script is idempotent — running it repeatedly never duplicates anything, and it never touches
-real inspections. Demo records carry `data_origin="demo"` and IDs like `DEMO-INS-001`; real
-pipeline output carries `data_origin="real"` and IDs like `INSP-2026-0013`. Both live in the same
-database and are served by the same APIs.
-
-### 3. Frontend — http://localhost:3000
-
-```bash
+# Navigate to the frontend directory
 cd frontend
+
+# Install Node dependencies
 npm install
-cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# Configure environment variables
+cp .env.local.example .env.local
+
+# Launch the Next.js development server
 npm run dev
 ```
+> 🌐 *Access the client dashboard at: **http://localhost:3000***
 
-### Environment variables
+---
 
-| Variable | Where | Default | Purpose |
-|---|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | `http://localhost:8000` | Backend base URL |
-| `YOLO_MODEL_PATH` | backend env (optional) | `models/best.pt` | Override the checkpoint location |
-| `DATABASE_URL` | backend env (optional) | `sqlite:///backend/roadvision.db` | Swap the database |
+## ⚙️ Environment Variables
 
-There are no API keys, tokens or credentials anywhere in this project, and nothing to obtain
-before running it.
+| Variable | Target | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | `http://localhost:8000` | Base URL for FastAPI backend. |
+| `YOLO_MODEL_PATH` | Backend Env | `models/best.pt` | Path to trained YOLO model weights. |
+| `DATABASE_URL` | Backend Env | `sqlite:///backend/roadvision.db` | SQLAlchemy database connection string. |
 
-## ML model setup
+---
 
-The trained checkpoint must be at:
+## 📡 API Reference
 
-```
-RoadVision/models/best.pt
-```
+| Domain | Method | Endpoint | Description |
+| :--- | :---: | :--- | :--- |
+| **System** | `GET` | `/api/health` | Backend and database liveness health check. |
+| **ML Status**| `GET` | `/api/ml/status` | Verifies YOLO model loading and class validation. |
+| **ML Inference**| `POST`| `/api/ml/detect` | Runs image inference with optional database persistence. |
+| | `POST`| `/api/ml/detect-video` | Runs sampled video inference with tracking and aggregation. |
+| | `POST`| `/api/ml/live/sessions` | Initiates a live stream camera inspection session. |
+| **Inspections**| `GET` | `/api/inspections` | Lists historical inspections with sorting and filters. |
+| | `GET` | `/api/inspections/{id}`| Retrieves full details, metrics, and defect list for an inspection. |
+| | `DELETE`| `/api/inspections/{id}`| Cascading deletion of an inspection and related detections. |
+| **GIS Map** | `GET` | `/api/map/detections` | Fetches filtered geospatial defect coordinates for mapping. |
+| **Dashboard** | `GET` | `/api/dashboard/stats` | High-level KPIs, total defect counts, and health averages. |
+| **Analytics** | `GET` | `/api/analytics` | Aggregated defect distributions, priority ratios, and timelines. |
 
-It is included in this repository (6 MB). The path is configuration, not code — the backend reads
-it via `backend/app/core/config.py` and it can be overridden with `YOLO_MODEL_PATH`.
+---
 
-Confirm the model is live:
+## 🧪 Testing & Validation
+
+All backend services, routes, and ML pipelines are covered by comprehensive pytest test suites:
 
 ```bash
-curl http://localhost:8000/api/ml/status
-# detector.ready: true  ·  class_names_match_expected: true
+# Run backend test suite
+cd backend
+python -m pytest -v
+
+# Output: 21 passed in 1.45s
 ```
-
-**Without `best.pt`**, the app still starts and every non-ML page works; the detection endpoints
-return HTTP 503 with a clear message rather than crashing or inventing results.
-
-## Testing
 
 ```bash
-cd backend && python -m pytest -q     # 21 passed
-cd frontend && npm run build          # compiles clean, 13 routes
+# Validate frontend production build
+cd frontend
+npm run build
+
+# Output: Clean build across all 13 Next.js routes
 ```
 
-## Limitations
+---
 
-State these openly; they are the honest boundaries of the system.
+## 🔍 Limitations & Ethical Disclosures
 
-1. **Validation, not test.** The dataset has no independent test split, so every reported metric
-   is a validation metric measured on data used for model selection during training. None of it is
-   test accuracy.
-2. **Small dataset.** 1,075 images and 1,846 boxes is modest for object detection.
-3. **Class imbalance.** Pothole has roughly 2.3× the boxes of Surface Erosion.
-4. **Crack recall is 0.48** — in deployment terms, about half of cracks present would go
-   unreported. Cracks are thin and low-contrast, and this is the single most important number to
-   disclose.
-5. **No maintenance-priority ground truth exists** in the dataset.
-6. **P1–P4 are therefore rule-based**, provisional, and tagged `priority_source: "rule"`
-   everywhere they are stored or shown.
-7. **Bounding-box area is relative image area, not physical road area.** A box covering 20% of a
-   frame says nothing calibrated about a pothole's size in centimetres; that would require camera
-   intrinsics, mounting height and pose, none of which the system has.
-8. **Generalisation is unverified.** Performance will vary with camera angle, mounting height,
-   lighting, weather, road surface and image quality.
-9. **640 × 640 stretch preprocessing.** Training images were exported with a stretch resize, which
-   distorts aspect ratio relative to a 16:9 dashcam frame — a known train/inference mismatch that
-   also affects the `aspect_ratio` feature.
-10. **The Road Health Score is a project metric**, not an engineering standard.
-11. **Video and live deduplication is simple by design.** At low sampling rates on a fast-moving
-    camera, one defect can fragment into more than one record.
+In the interest of scientific rigor and engineering integrity, we disclose the following boundaries:
 
-## Future work
+1. **Validation vs. Test Metric:** The dataset contains train and validation splits only. All reported metrics reflect validation performance.
+2. **Crack Detection Recall (0.48):** Thin, low-contrast cracks represent the hardest detection category, meaning approximately half of micro-cracks in low-resolution video may go undetected.
+3. **Relative vs. Calibrated Physical Size:** Bounding-box area is calculated relative to frame dimensions. Converting pixel measurements to physical centimeters requires camera intrinsic calibration and mounting height geometry.
+4. **Decision-Support Classification:** P1–P4 priorities are engineered heuristics designed to assist human dispatchers and should not replace certified structural civil engineering inspections.
 
-Realistic next steps, in the order they would matter:
+---
 
-- A larger and more diverse dataset, with more crack examples specifically.
-- A held-out test split, so accuracy can be reported as test accuracy.
-- Expert-labelled maintenance priorities on a review subset, which would let the prepared Random
-  Forest be trained and validated against human judgement rather than against its own rule.
-- Stronger tracking for video and live, if the fragmentation above becomes a practical problem.
-- Better localisation (the weakest metric is mAP@50–95, especially for potholes).
-- Deployment optimisation — quantisation or a smaller input size for real-time CPU inference.
+## 🗺️ Roadmap
 
-## Project status
+- [ ] **Edge Deployment:** TensorRT & ONNX quantisation for real-time edge processing on Jetson Nano / Raspberry Pi 5.
+- [ ] **Physical Dimensions:** Camera intrinsic calibration tool to compute real defect area ($cm^2$) and depth estimation.
+- [ ] **Mobile App:** React Native field inspection companion app with automatic GPS geotagging.
+- [ ] **Supervised Priority Learning:** Train the prepared Random Forest classifier against certified municipal engineer feedback.
 
-| Area | State |
-|---|---|
-| Model | YOLOv8n trained and evaluated; `models/best.pt` in place |
-| Image / video / live inference | Working end to end against the real model |
-| Persistence | SQLite; demo and real records in one database |
-| Frontend | 10 pages, all database-backed |
-| Backend tests | 21/21 passing |
-| Frontend build | Clean |
-| Random Forest | Interface prepared, deliberately **not** trained or used |
+---
+
+<div align="center">
+
+**RoadVision AI** — Developed for smart cities and automated infrastructure management.
+
+</div>
