@@ -1,6 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Next.js
 node_modules/
 .next/
-*.png
 out/
-.env*.local
-npm-debug.log*
+*.tsbuildinfo
+AGENTS.md
+CLAUDE.md
+
+# Local environment (the committed example is .env.local.example)
+.env
+.env.local
+
+# Runtime uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Ultralytics run output (evaluation copies live in docs/ml_results/)
+runs/
+
+# OS
+.DS_Store
+Thumbs.db
