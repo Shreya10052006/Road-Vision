@@ -1,0 +1,127 @@
+{
+  "note": "Real YOLO output at conf=0.25, iou=0.45 \u2014 nothing edited. Ground-truth classes are listed alongside so a prediction can be compared rather than assumed correct.",
+  "examples": [
+    {
+      "file": "strong_pothole.jpg",
+      "source_image": "Pothole_403_jpg.rf.16627e0287683d68a60d681cbdeff01c.jpg",
+      "predictions": [
+        {
+          "class": "Pothole",
+          "confidence": 0.8
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.561
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.547
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.492
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.297
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.278
+        }
+      ],
+      "ground_truth_classes": [
+        "Pothole",
+        "Pothole",
+        "Pothole",
+        "Pothole",
+        "Pothole",
+        "Pothole"
+      ]
+    },
+    {
+      "file": "strong_crack.jpg",
+      "source_image": "crack_124_jpg.rf.27316e9cb32311b5e0d1a7ec81c6b166.jpg",
+      "predictions": [
+        {
+          "class": "Crack",
+          "confidence": 0.607
+        }
+      ],
+      "ground_truth_classes": [
+        "Crack"
+      ]
+    },
+    {
+      "file": "strong_surface_erosion.jpg",
+      "source_image": "Pothole_115_jpg.rf.04d2a2413fc4d12fb4704dbcba82ddf6.jpg",
+      "predictions": [
+        {
+          "class": "Surface Erosion",
+          "confidence": 0.715
+        }
+      ],
+      "ground_truth_classes": [
+        "Surface Erosion",
+        "Crack",
+        "Crack"
+      ]
+    },
+    {
+      "file": "multiple_detections.jpg",
+      "source_image": "Pothole_12_jpg.rf.0eb16e2a8943521a4c01fe32e1b589b6.jpg",
+      "predictions": [
+        {
+          "class": "Pothole",
+          "confidence": 0.558
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.451
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.449
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.423
+        },
+        {
+          "class": "Pothole",
+          "confidence": 0.383
+        }
+      ],
+      "ground_truth_classes": [
+        "Pothole",
+        "Pothole",
+        "Pothole"
+      ]
+    },
+    {
+      "file": "difficult_low_confidence.jpg",
+      "source_image": "Pothole_119_jpg.rf.e18fc01e9be43ac7c774c2e98688a7bf.jpg",
+      "predictions": [
+        {
+          "class": "Pothole",
+          "confidence": 0.343
+        },
+        {
+          "class": "Surface Erosion",
+          "confidence": 0.256
+        }
+      ],
+      "ground_truth_classes": [
+        "Pothole"
+      ]
+    },
+    {
+      "file": "missed_detection.jpg",
+      "source_image": "Pothole_139_jpg.rf.d8c10b3410eee470a1070361e1738d51.jpg",
+      "predictions": [],
+      "ground_truth_classes": [
+        "Pothole"
+      ]
+    }
+  ]
+}

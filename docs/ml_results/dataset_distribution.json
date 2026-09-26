@@ -1,0 +1,33 @@
+{
+  "splits": {
+    "train": {
+      "images": 914,
+      "label_files": 914,
+      "boxes": 1556,
+      "images_without_boxes": 4,
+      "by_class": {
+        "Crack": 445,
+        "Pothole": 768,
+        "Surface Erosion": 343
+      }
+    },
+    "valid": {
+      "images": 161,
+      "label_files": 161,
+      "boxes": 290,
+      "images_without_boxes": 0,
+      "by_class": {
+        "Crack": 77,
+        "Pothole": 159,
+        "Surface Erosion": 54
+      }
+    }
+  },
+  "total_images": 1075,
+  "total_boxes": 1846,
+  "boxes_by_class_total": {
+    "Crack": 522,
+    "Pothole": 927,
+    "Surface Erosion": 397
+  }
+}
