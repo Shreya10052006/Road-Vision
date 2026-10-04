@@ -17,7 +17,7 @@ import { useLiveInspection } from "@/lib/hooks/useLiveInspection";
 import { useCamera } from "@/contexts/CameraContext";
 import { useToast } from "@/contexts/ToastContext";
 import { damageTypeConfig } from "@/lib/priorityConfig";
-import type { DamageType, Detection } from "@/lib/types";
+import type { CameraFacingMode, CameraSource, DamageType, Detection } from "@/lib/types";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -31,8 +31,19 @@ function damageLabel(value: string) {
 }
 
 export default function LivePage() {
-  const live = useLiveInspection();
-  const { source, setSource, connect, disconnect } = useCamera();
+  const {
+    source,
+    setSource,
+    facingMode,
+    setFacingMode,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    availableDevices,
+    connect,
+    disconnect,
+  } = useCamera();
+
+  const live = useLiveInspection(facingMode);
   const { showToast } = useToast();
   const router = useRouter();
   const [selectedDetectionId, setSelectedDetectionId] = useState<string | null>(null);
@@ -40,17 +51,60 @@ export default function LivePage() {
     live.detections.find((d) => d.id === selectedDetectionId) ?? null;
 
   const handleStart = async () => {
-    const ok = await live.start();
+    const ok = await live.start(facingMode, selectedDeviceId);
     if (ok) {
       connect();
-      showToast("Live inspection started", "success");
+      showToast(
+        `Live inspection started (${facingMode === "user" ? "Front Camera" : "Back Camera"})`,
+        "success",
+      );
     }
+  };
+
+  const handleSourceChange = async (newSource: CameraSource) => {
+    setSource(newSource);
+    if (newSource === "phone_back") {
+      setFacingMode("environment");
+      if (live.status === "running" || live.status === "paused") {
+        await live.switchCamera("environment", null);
+      }
+    } else if (newSource === "phone_front") {
+      setFacingMode("user");
+      if (live.status === "running" || live.status === "paused") {
+        await live.switchCamera("user", null);
+      }
+    }
+  };
+
+  const handleFacingModeChange = async (mode: CameraFacingMode) => {
+    setFacingMode(mode);
+    if (live.status === "running" || live.status === "paused") {
+      await live.switchCamera(mode, selectedDeviceId);
+    }
+  };
+
+  const handleDeviceChange = async (deviceId: string) => {
+    setSelectedDeviceId(deviceId || null);
+    if (live.status === "running" || live.status === "paused") {
+      await live.switchCamera(facingMode, deviceId || null);
+    }
+  };
+
+  const handleFlipCamera = async () => {
+    const nextMode: CameraFacingMode = live.facingMode === "environment" ? "user" : "environment";
+    setFacingMode(nextMode);
+    if (live.status === "running" || live.status === "paused") {
+      await live.flipCamera();
+    } else {
+      await live.switchCamera(nextMode, null);
+    }
+    showToast(`Switched to ${nextMode === "user" ? "Front (Cabin)" : "Back (Road)"} camera`, "info");
   };
 
   const handleStop = async () => {
     const result = await live.stop({
-      title: "Live Inspection",
-      road: "Live Camera",
+      title: "Live Camera Inspection",
+      road: facingMode === "user" ? "Live Front Camera" : "Live Road Camera",
       city: "Chennai",
     });
     disconnect();
@@ -72,25 +126,31 @@ export default function LivePage() {
 
   return (
     <>
-      <Header title="Live Inspection Center" subtitle="Real-time road damage monitoring" />
+      <Header title="Live Inspection Center" subtitle="Real-time road damage & pothole monitoring from phone or camera" />
       <main className="flex-1 p-4 sm:p-8 space-y-5">
         <Card className="p-4">
           <CameraSourceSelector
             source={source}
-            onChange={setSource}
+            onChange={handleSourceChange}
+            facingMode={live.facingMode}
+            onFacingModeChange={handleFacingModeChange}
+            availableDevices={availableDevices}
+            selectedDeviceId={selectedDeviceId}
+            onDeviceChange={handleDeviceChange}
+            onFlipCamera={handleFlipCamera}
             connected={live.status === "running" || live.status === "paused"}
-            disabled={live.status !== "idle"}
+            disabled={live.status === "completed"}
           />
         </Card>
 
         {live.error && (
-          <Card className="p-4 flex items-start gap-3">
+          <Card className="p-4 flex items-start gap-3 border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20">
             <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                Camera / inference problem
+              <div className="text-sm font-semibold text-red-800 dark:text-red-200">
+                Camera / Inference Notice
               </div>
-              <div className="text-sm text-slate-500 dark:text-slate-400">{live.error}</div>
+              <div className="text-sm text-red-700 dark:text-red-300 mt-0.5">{live.error}</div>
             </div>
             <Button variant="ghost" size="sm" onClick={live.clearError}>
               Dismiss
@@ -167,6 +227,14 @@ export default function LivePage() {
                 boxes={live.visibleBoxes}
                 frameSize={live.frameSize}
                 latencyMs={live.lastLatencyMs}
+                facingMode={live.facingMode}
+                isMirrored={live.isMirrored}
+                hasTorch={live.hasTorch}
+                torchActive={live.torchActive}
+                potholeAlert={live.potholeAlert}
+                onFlipCamera={handleFlipCamera}
+                onToggleTorch={() => void live.toggleTorch()}
+                onToggleMirror={live.toggleMirror}
               />
               <Card className="p-5">
                 <LiveControls
@@ -176,6 +244,10 @@ export default function LivePage() {
                   onResume={live.resume}
                   onStop={() => void handleStop()}
                   onCapture={live.captureFrame}
+                  onFlipCamera={handleFlipCamera}
+                  hasTorch={live.hasTorch}
+                  torchActive={live.torchActive}
+                  onToggleTorch={() => void live.toggleTorch()}
                 />
               </Card>
               <LiveStats
