@@ -13,6 +13,8 @@ import { useToast } from "@/contexts/ToastContext";
 import type { CameraSource } from "@/lib/types";
 
 const SOURCE_LABELS: Record<CameraSource, string> = {
+  phone_back: "Phone Back Camera (Road)",
+  phone_front: "Phone Front Camera (Cabin)",
   webcam: "Laptop Webcam",
   usb_camera: "USB Camera",
   ip_camera: "Phone IP Camera",

@@ -15,7 +15,16 @@ export type InspectionSource = "live" | "upload";
 
 export type InspectionStatus = "pending" | "processing" | "completed" | "failed";
 
-export type CameraSource = "webcam" | "usb_camera" | "ip_camera" | "dashboard_camera" | "demo_video";
+export type CameraFacingMode = "environment" | "user";
+
+export type CameraSource =
+  | "phone_back"
+  | "phone_front"
+  | "webcam"
+  | "usb_camera"
+  | "ip_camera"
+  | "dashboard_camera"
+  | "demo_video";
 
 export interface DetectionFeatures {
   bboxAreaRatio: number;

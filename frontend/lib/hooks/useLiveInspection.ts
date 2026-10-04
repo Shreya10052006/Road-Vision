@@ -1,19 +1,21 @@
 "use client";
 
 /**
- * Real webcam inspection.
+ * Real camera & phone camera live inspection.
  *
- *   getUserMedia -> <video> -> offscreen canvas -> JPEG blob
+ *   getUserMedia (Front / Back camera / Device ID) -> <video> -> offscreen canvas -> JPEG blob
  *     -> POST /api/ml/detect-frame  (YOLO best.pt -> features -> rule priority)
  *     -> live overlay + running aggregates
  *     -> POST /api/ml/live/sessions/{id}/finalize on Stop
  *
  * Nothing here is simulated: every detection shown comes from the backend.
  *
- * PACING. Frames are sampled at ~2 fps, and only ever one request is in flight
- * — the loop is a self-rescheduling timeout, not an interval, so a slow
- * inference simply delays the next capture instead of queueing work. A frame is
- * skipped outright if the previous request has not returned. There is no queue.
+ * Supports:
+ * - Phone Back Camera (Environment / Road facing)
+ * - Phone Front Camera (User / Selfie facing)
+ * - Dynamic camera switching during live session
+ * - Flashlight / Torch toggle for phone back camera
+ * - Bounding box scaling & mirroring
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,7 +27,7 @@ import {
   type ApiDetection,
   type FinalizeLiveResponse,
 } from "@/lib/api";
-import type { DamageType, Detection, Priority } from "@/lib/types";
+import type { CameraFacingMode, DamageType, Detection, Priority } from "@/lib/types";
 
 export type LiveStatus = "idle" | "running" | "paused" | "completed";
 
@@ -48,7 +50,6 @@ function toDetection(d: ApiDetection, frameIndex: number, seq: number): Detectio
     damageType: d.damage_type as DamageType,
     priority: d.priority,
     confidence: d.confidence,
-    // Rule-derived priorities carry no model confidence and no model version.
     priorityConfidence: d.priority_confidence ?? 0,
     modelVersion: d.model_version ?? "rule",
     road: "Live Camera",
@@ -72,7 +73,72 @@ function toDetection(d: ApiDetection, frameIndex: number, seq: number): Detectio
   };
 }
 
-export function useLiveInspection() {
+/** Request camera stream with progressive fallbacks */
+async function getMediaStream(
+  facingMode: CameraFacingMode = "environment",
+  deviceId?: string | null,
+): Promise<MediaStream> {
+  const tryConstraints: MediaStreamConstraints[] = [];
+
+  if (deviceId) {
+    tryConstraints.push({
+      video: {
+        deviceId: { exact: deviceId },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+    tryConstraints.push({
+      video: { deviceId: { exact: deviceId } },
+      audio: false,
+    });
+  }
+
+  // Exact facingMode (some mobile devices prefer exact)
+  tryConstraints.push({
+    video: {
+      facingMode: { exact: facingMode },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    },
+    audio: false,
+  });
+
+  // Ideal facingMode
+  tryConstraints.push({
+    video: {
+      facingMode: { ideal: facingMode },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    },
+    audio: false,
+  });
+
+  tryConstraints.push({
+    video: { facingMode: { ideal: facingMode } },
+    audio: false,
+  });
+
+  // Generic fallback
+  tryConstraints.push({
+    video: true,
+    audio: false,
+  });
+
+  let lastError: unknown = null;
+  for (const constraint of tryConstraints) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraint);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError;
+}
+
+export function useLiveInspection(initialFacingMode: CameraFacingMode = "environment") {
   const [status, setStatus] = useState<LiveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -90,6 +156,14 @@ export function useLiveInspection() {
   const [saved, setSaved] = useState<FinalizeLiveResponse | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Camera device and facing mode states
+  const [facingMode, setFacingModeState] = useState<CameraFacingMode>(initialFacingMode);
+  const [selectedDeviceId, setSelectedDeviceIdState] = useState<string | null>(null);
+  const [isMirrored, setIsMirrored] = useState(initialFacingMode === "user");
+  const [hasTorch, setHasTorch] = useState(false);
+  const [torchActive, setTorchActive] = useState(false);
+  const [potholeAlert, setPotholeAlert] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -100,13 +174,28 @@ export function useLiveInspection() {
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
   const seqRef = useRef(0);
+  const facingModeRef = useRef<CameraFacingMode>(initialFacingMode);
+  const deviceIdRef = useRef<string | null>(null);
 
   const averageConfidence = totalObserved > 0 ? confidenceSum / totalObserved : 0;
+
+  const updateTorchSupport = useCallback((stream: MediaStream) => {
+    const track = stream.getVideoTracks()[0];
+    if (track && "getCapabilities" in track) {
+      const caps = (track.getCapabilities() as unknown as { torch?: boolean }) || {};
+      setHasTorch(!!caps.torch);
+    } else {
+      setHasTorch(false);
+    }
+    setTorchActive(false);
+  }, []);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+    setHasTorch(false);
+    setTorchActive(false);
   }, []);
 
   const stopLoops = useCallback(() => {
@@ -132,9 +221,8 @@ export function useLiveInspection() {
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    // Drawn unmirrored on purpose: the preview may be CSS-mirrored for comfort,
-    // but the frame sent for inference — and therefore the box coordinates that
-    // come back — stays in the camera's own coordinate space.
+
+    // Captured frame is drawn unmirrored so box pixel coordinates align with model detection
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     return new Promise((resolve) =>
@@ -178,9 +266,22 @@ export function useLiveInspection() {
           for (const d of data.detections) next[d.damage_type] = (next[d.damage_type] ?? 0) + 1;
           return next;
         });
+
+        // Trigger pothole alert & phone vibration if pothole detected
+        const hasPothole = data.detections.some((d) => d.damage_type === "pothole");
+        if (hasPothole) {
+          setPotholeAlert(true);
+          setTimeout(() => setPotholeAlert(false), 2000);
+          if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+            try {
+              navigator.vibrate?.([80, 50, 80]);
+            } catch {
+              /* ignore vibration restriction */
+            }
+          }
+        }
       }
     } catch (err) {
-      // One failed frame must not end the session — the camera keeps running.
       if ((err as Error)?.name !== "AbortError" && runningRef.current) {
         setError((err as Error)?.message ?? "A frame could not be processed.");
       }
@@ -204,66 +305,149 @@ export function useLiveInspection() {
     timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
   }, []);
 
-  const start = useCallback(async () => {
-    setError(null);
+  /** Switch camera stream dynamically without stopping live session */
+  const switchCamera = useCallback(
+    async (newFacingMode?: CameraFacingMode, newDeviceId?: string | null) => {
+      const targetMode = newFacingMode ?? facingModeRef.current;
+      const targetDeviceId = newDeviceId !== undefined ? newDeviceId : deviceIdRef.current;
 
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setError("This browser does not support camera access (getUserMedia).");
-      return false;
-    }
+      facingModeRef.current = targetMode;
+      deviceIdRef.current = targetDeviceId;
+      setFacingModeState(targetMode);
+      setSelectedDeviceIdState(targetDeviceId);
+      setIsMirrored(targetMode === "user");
 
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    } catch (err) {
-      const name = (err as DOMException)?.name;
-      setError(
-        name === "NotAllowedError" || name === "SecurityError"
-          ? "Camera permission was denied. Allow camera access in the browser and try again."
-          : name === "NotFoundError" || name === "OverconstrainedError"
-            ? "No camera was found on this device."
-            : name === "NotReadableError"
-              ? "The camera is already in use by another application."
-              : `The camera could not be started: ${(err as Error)?.message ?? name}`,
-      );
-      return false;
-    }
-
-    streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      try {
-        await videoRef.current.play();
-      } catch {
-        /* autoplay policies — the muted playsInline video normally starts anyway */
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        return false;
       }
-    }
 
+      try {
+        const stream = await getMediaStream(targetMode, targetDeviceId);
+
+        // Stop old tracks
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+        }
+
+        streamRef.current = stream;
+        updateTorchSupport(stream);
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch {
+            /* ignore autoplay restriction */
+          }
+        }
+        return true;
+      } catch (err) {
+        setError(`Failed to switch camera: ${(err as Error)?.message ?? "Device error"}`);
+        return false;
+      }
+    },
+    [updateTorchSupport],
+  );
+
+  /** Flip between Front and Back camera */
+  const flipCamera = useCallback(async () => {
+    const nextMode: CameraFacingMode = facingModeRef.current === "environment" ? "user" : "environment";
+    return await switchCamera(nextMode, null);
+  }, [switchCamera]);
+
+  /** Toggle torch / flashlight if supported by active back camera */
+  const toggleTorch = useCallback(async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track || !("applyConstraints" in track)) return false;
     try {
-      sessionRef.current = (await startLiveSession()).session_id;
+      const nextTorch = !torchActive;
+      await (track as unknown as { applyConstraints: (c: unknown) => Promise<void> }).applyConstraints({
+        advanced: [{ torch: nextTorch }],
+      });
+      setTorchActive(nextTorch);
+      return true;
     } catch {
-      // The camera still runs and detections still display; only saving is lost.
-      sessionRef.current = null;
-      setError("Connected to the camera, but the backend session could not be started — this run cannot be saved.");
+      return false;
     }
+  }, [torchActive]);
 
-    seqRef.current = 0;
-    setElapsedSeconds(0);
-    setFramesProcessed(0);
-    setDetections([]);
-    setCurrentDetection(null);
-    setVisibleBoxes([]);
-    setByPriority(emptyPriorityCounts());
-    setByType({});
-    setTotalObserved(0);
-    setConfidenceSum(0);
-    setSaved(null);
-    setStatus("running");
-    runningRef.current = true;
-    startTimer();
-    scheduleLoop();
-    return true;
-  }, [scheduleLoop, startTimer]);
+  const toggleMirror = useCallback(() => {
+    setIsMirrored((prev) => !prev);
+  }, []);
+
+  const start = useCallback(
+    async (overrideFacingMode?: CameraFacingMode, overrideDeviceId?: string | null) => {
+      setError(null);
+
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        setError("This browser does not support camera access (getUserMedia). Ensure HTTPS or localhost.");
+        return false;
+      }
+
+      const targetMode = overrideFacingMode ?? facingModeRef.current;
+      const targetDeviceId = overrideDeviceId !== undefined ? overrideDeviceId : deviceIdRef.current;
+
+      facingModeRef.current = targetMode;
+      deviceIdRef.current = targetDeviceId;
+      setFacingModeState(targetMode);
+      setSelectedDeviceIdState(targetDeviceId);
+      setIsMirrored(targetMode === "user");
+
+      let stream: MediaStream;
+      try {
+        stream = await getMediaStream(targetMode, targetDeviceId);
+      } catch (err) {
+        const name = (err as DOMException)?.name;
+        setError(
+          name === "NotAllowedError" || name === "SecurityError"
+            ? "Camera permission was denied. Please allow camera permissions in your phone/browser settings."
+            : name === "NotFoundError" || name === "OverconstrainedError"
+              ? "Requested camera was not found on this device."
+              : name === "NotReadableError"
+                ? "The camera is currently in use by another app."
+                : `The camera could not be started: ${(err as Error)?.message ?? name}`,
+        );
+        return false;
+      }
+
+      streamRef.current = stream;
+      updateTorchSupport(stream);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        try {
+          await videoRef.current.play();
+        } catch {
+          /* autoplay policies */
+        }
+      }
+
+      try {
+        sessionRef.current = (await startLiveSession()).session_id;
+      } catch {
+        sessionRef.current = null;
+        setError("Connected to camera, but backend live session could not be created — this run cannot be saved.");
+      }
+
+      seqRef.current = 0;
+      setElapsedSeconds(0);
+      setFramesProcessed(0);
+      setDetections([]);
+      setCurrentDetection(null);
+      setVisibleBoxes([]);
+      setByPriority(emptyPriorityCounts());
+      setByType({});
+      setTotalObserved(0);
+      setConfidenceSum(0);
+      setSaved(null);
+      setStatus("running");
+      runningRef.current = true;
+      startTimer();
+      scheduleLoop();
+      return true;
+    },
+    [scheduleLoop, startTimer, updateTorchSupport],
+  );
 
   const pause = useCallback(() => {
     stopLoops();
@@ -326,12 +510,11 @@ export function useLiveInspection() {
     setSaved(null);
   }, [stopCamera, stopLoops]);
 
-  /** Capture Frame: one extra inference now, outside the sampling rhythm. */
   const captureFrame = useCallback(() => {
     void processOneFrame();
   }, [processOneFrame]);
 
-  // Release the camera if the page unmounts mid-session.
+  // Release camera on unmount
   useEffect(() => {
     return () => {
       runningRef.current = false;
@@ -359,12 +542,22 @@ export function useLiveInspection() {
     saved,
     saving,
     videoRef,
+    facingMode,
+    selectedDeviceId,
+    isMirrored,
+    hasTorch,
+    torchActive,
+    potholeAlert,
     start,
     pause,
     resume,
     stop,
     reset,
     captureFrame,
+    switchCamera,
+    flipCamera,
+    toggleTorch,
+    toggleMirror,
     clearError: () => setError(null),
   };
 }
