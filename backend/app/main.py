@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.routes import (
@@ -34,6 +35,10 @@ from app.db.database import init_db
 settings = get_settings()
 configure_logging()
 logger = logging.getLogger("roadvision")
+
+# Ensure uploads directories exist
+settings.upload_dir.mkdir(parents=True, exist_ok=True)
+(settings.upload_dir / "frames").mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
@@ -106,3 +111,6 @@ app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(map_routes.router, prefix=settings.api_prefix)
 app.include_router(analytics.router, prefix=settings.api_prefix)
 app.include_router(ml.router, prefix=settings.api_prefix)
+
+# --- Static files for frame screenshots and uploaded media ---
+app.mount("/uploads", StaticFiles(directory=str(settings.upload_dir)), name="uploads")

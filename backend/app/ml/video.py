@@ -214,8 +214,14 @@ class VideoInspectionProcessor:
         self.processor = processor
         self.config = config or VideoConfig()
 
-    def process(self, video_path: str) -> dict[str, Any]:
+    def process(
+        self,
+        video_path: str,
+        output_dir: str | Path | None = None,
+        public_id: str | None = None,
+    ) -> dict[str, Any]:
         import cv2  # local import: keeps OpenCV off the module import path
+        from app.ml.annotate import save_annotated_frame
 
         path = Path(video_path)
         if not path.exists():
@@ -249,6 +255,8 @@ class VideoInspectionProcessor:
                     stride = max(stride, -(-total_frames // self.config.max_frames))
 
             frame_detections: list[FrameDetection] = []
+            sampled_frames: dict[int, Any] = {}
+            detections_by_frame: dict[int, list[dict[str, Any]]] = {}
             sample_index_of: dict[int, int] = {}
             frame_number = 0
             processed_frames = 0
@@ -266,7 +274,13 @@ class VideoInspectionProcessor:
                     last_timestamp = timestamp
                     sample_index_of[frame_number] = processed_frames
 
-                    for processed in self.processor.detect_and_process(frame, w, h):
+                    processed_list = self.processor.detect_and_process(frame, w, h)
+                    if processed_list:
+                        # Keep a copy of the frame to generate annotated snapshots
+                        sampled_frames[frame_number] = frame.copy()
+                        detections_by_frame[frame_number] = [p.to_dict() for p in processed_list]
+
+                    for processed in processed_list:
                         frame_detections.append(
                             FrameDetection(
                                 frame_number=frame_number,
@@ -287,6 +301,32 @@ class VideoInspectionProcessor:
             duration = (total_frames / fps) if total_frames else last_timestamp
             tracks = aggregate(frame_detections, sample_index_of, self.config)
 
+            damages_list = []
+            prefix = public_id or "vid"
+            for idx, track in enumerate(tracks, start=1):
+                track_dict = track.to_dict()
+                best_frame_num = track.best.frame_number
+                frame_img = sampled_frames.get(best_frame_num)
+
+                if frame_img is not None and output_dir is not None:
+                    out_dir = Path(output_dir)
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    filename = f"{prefix}_det_{idx}.jpg"
+                    file_dest = out_dir / filename
+                    
+                    frame_dets = detections_by_frame.get(best_frame_num, [track_dict])
+                    save_annotated_frame(
+                        frame_img,
+                        frame_dets,
+                        file_dest,
+                        timestamp=track_dict.get("first_seen"),
+                        frame_number=best_frame_num,
+                    )
+                    track_dict["image_path"] = f"/uploads/frames/{filename}"
+                    track_dict["image_url"] = f"/uploads/frames/{filename}"
+
+                damages_list.append(track_dict)
+
             return {
                 "video": {
                     "total_frames": total_frames,
@@ -299,7 +339,7 @@ class VideoInspectionProcessor:
                     "height": height,
                 },
                 "summary": self._summarize(frame_detections, tracks),
-                "damages": [t.to_dict() for t in tracks],
+                "damages": damages_list,
                 "frame_detections": [fd.to_dict() for fd in frame_detections],
             }
         finally:

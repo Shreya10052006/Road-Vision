@@ -70,8 +70,11 @@ def process_and_persist(
     On failure the inspection is marked `failed` with the reason recorded,
     rather than left stuck in `processing`.
     """
+    frames_dir = settings.upload_dir / "frames"
     try:
-        result = VideoInspectionProcessor(processor, config).process(video_path)
+        result = VideoInspectionProcessor(processor, config).process(
+            video_path, output_dir=frames_dir, public_id=inspection.public_id
+        )
     except VideoProcessingError:
         inspection.status = InspectionStatus.failed
         inspection.error_message = "Video could not be processed."
@@ -151,6 +154,7 @@ def persist_damages(db: Session, inspection: Inspection, damages: list[dict]) ->
                 priority_confidence=damage.get("priority_confidence"),
                 priority_source=damage.get("priority_source"),
                 model_version=damage.get("model_version"),
+                image_path=damage.get("image_path"),
                 # Inherit the inspection's map pin; per-detection GPS is not
                 # available from an uploaded file or a webcam.
                 latitude=inspection.latitude,

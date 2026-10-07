@@ -13,14 +13,17 @@ import { InspectionDetailsForm, type InspectionDetailsValue } from "@/components
 import { ProcessingSettings, type ProcessingSettingsValue } from "@/components/upload/ProcessingSettings";
 import { ProcessingProgress, type ProcessingStep } from "@/components/upload/ProcessingProgress";
 import { PriorityBadge } from "@/components/ui/Badge";
+import { AnnotatedFramePreview } from "@/components/inspections/AnnotatedFramePreview";
 import { useToast } from "@/contexts/ToastContext";
 import {
+  API_BASE_URL,
   detectImage,
   detectVideo,
   type ApiDetection,
   type DetectImageResponse,
   type DetectVideoResponse,
 } from "@/lib/api";
+import type { DamageType, Detection, Priority } from "@/lib/types";
 
 const LocationPicker = dynamic(() => import("@/components/upload/LocationPicker"), {
   ssr: false,
@@ -234,33 +237,72 @@ export default function UploadPage() {
                     No road damage detected above the configured confidence threshold.
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {videoResult.damages.map((d, i) => (
-                      <div
-                        key={i}
-                        className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3"
-                      >
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {formatDamageType(d.damage_type)}
-                        </span>
-                        <PriorityBadge priority={d.priority} compact />
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {(d.confidence * 100).toFixed(1)}% confidence
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          first seen {d.first_seen} · frame {d.frame_number} · {d.frame_count} frame
-                          {d.frame_count === 1 ? "" : "s"}
-                        </span>
-                        <span className="ml-auto text-[11px] text-slate-400">
-                          priority source: {d.priority_source}
-                        </span>
+                  <div className="space-y-5">
+                    {/* Visual Annotated Frame Snapshots */}
+                    <AnnotatedFramePreview
+                      detections={videoResult.damages.map((d, idx) => ({
+                        id: `vid-${idx}`,
+                        inspectionId: videoResult.inspection_id,
+                        frameIndex: d.frame_number ?? idx + 1,
+                        timestamp: d.first_seen ?? d.timestamp ?? "00:00:00",
+                        damageType: (d.damage_type ?? "pothole") as DamageType,
+                        priority: (d.priority ?? "P4") as Priority,
+                        confidence: d.confidence ?? 0,
+                        priorityConfidence: d.priority_confidence ?? 0,
+                        modelVersion: d.model_version ?? d.priority_source ?? "rule",
+                        road: details.roadName || "Road Corridor",
+                        area: details.city || "Chennai",
+                        lat: position?.[0] ?? 0,
+                        lng: position?.[1] ?? 0,
+                        detectedAt: new Date().toISOString(),
+                        imagePath: d.image_path,
+                        imageUrl: d.image_url
+                          ? d.image_url.startsWith("http")
+                            ? d.image_url
+                            : `${API_BASE_URL}${d.image_url.startsWith("/") ? "" : "/"}${d.image_url}`
+                          : null,
+                        features: {
+                          bboxAreaRatio: d.features?.bbox_area_ratio ?? 0,
+                          aspectRatio: d.features?.aspect_ratio ?? 0,
+                          frameDamageCount: d.features?.frame_damage_count ?? 0,
+                          frameDamageDensity: d.features?.frame_damage_density ?? 0,
+                          detectorConfidence: d.features?.detector_confidence ?? d.confidence ?? 0,
+                          framePositionY: d.features?.frame_position_y ?? 0,
+                        },
+                      }))}
+                    />
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Damage Inventory List
                       </div>
-                    ))}
-                    <p className="text-[11px] text-slate-400 pt-1">
-                      Repeated sightings of the same defect across nearby frames are merged by damage type and
-                      bounding-box overlap, so each row is one physical damage. Priorities marked &quot;rule&quot;
-                      are provisional decision-support labels, not dataset ground truth.
-                    </p>
+                      {videoResult.damages.map((d, i) => (
+                        <div
+                          key={i}
+                          className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3"
+                        >
+                          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {formatDamageType(d.damage_type)}
+                          </span>
+                          <PriorityBadge priority={d.priority} compact />
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {(d.confidence * 100).toFixed(1)}% confidence
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            first seen {d.first_seen} · frame {d.frame_number} · {d.frame_count} frame
+                            {d.frame_count === 1 ? "" : "s"}
+                          </span>
+                          <span className="ml-auto text-[11px] text-slate-400">
+                            priority source: {d.priority_source}
+                          </span>
+                        </div>
+                      ))}
+                      <p className="text-[11px] text-slate-400 pt-1">
+                        Repeated sightings of the same defect across nearby frames are merged by damage type and
+                        bounding-box overlap, so each row is one physical damage. Priorities marked &quot;rule&quot;
+                        are provisional decision-support labels, not dataset ground truth.
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -288,32 +330,71 @@ export default function UploadPage() {
                     No road damage detected above the configured confidence threshold.
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {result.detections.map((d: ApiDetection, i: number) => (
-                      <div
-                        key={i}
-                        className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3"
-                      >
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {formatDamageType(d.damage_type)}
-                        </span>
-                        <PriorityBadge priority={d.priority} compact />
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {(d.confidence * 100).toFixed(1)}% confidence
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          bbox {d.bbox.x.toFixed(0)}, {d.bbox.y.toFixed(0)} · {d.bbox.width.toFixed(0)}×
-                          {d.bbox.height.toFixed(0)}
-                        </span>
-                        <span className="ml-auto text-[11px] text-slate-400">
-                          priority source: {d.priority_source}
-                        </span>
+                  <div className="space-y-5">
+                    {/* Visual Annotated Frame Preview */}
+                    <AnnotatedFramePreview
+                      detections={result.detections.map((d: ApiDetection, idx: number) => ({
+                        id: `img-${idx}`,
+                        inspectionId: result.inspection_id ?? "TEMP",
+                        frameIndex: 1,
+                        timestamp: "00:00:00",
+                        damageType: (d.damage_type ?? "pothole") as DamageType,
+                        priority: (d.priority ?? "P4") as Priority,
+                        confidence: d.confidence ?? 0,
+                        priorityConfidence: d.priority_confidence ?? 0,
+                        modelVersion: d.model_version ?? d.priority_source ?? "rule",
+                        road: details.roadName || "Road Corridor",
+                        area: details.city || "Chennai",
+                        lat: position?.[0] ?? 0,
+                        lng: position?.[1] ?? 0,
+                        detectedAt: new Date().toISOString(),
+                        imagePath: d.image_path ?? result.image_url,
+                        imageUrl: (d.image_url ?? result.image_url)
+                          ? (d.image_url ?? result.image_url)!.startsWith("http")
+                            ? (d.image_url ?? result.image_url)!
+                            : `${API_BASE_URL}${(d.image_url ?? result.image_url)!.startsWith("/") ? "" : "/"}${d.image_url ?? result.image_url}`
+                          : null,
+                        features: {
+                          bboxAreaRatio: d.features?.bbox_area_ratio ?? 0,
+                          aspectRatio: d.features?.aspect_ratio ?? 0,
+                          frameDamageCount: d.features?.frame_damage_count ?? 0,
+                          frameDamageDensity: d.features?.frame_damage_density ?? 0,
+                          detectorConfidence: d.features?.detector_confidence ?? d.confidence ?? 0,
+                          framePositionY: d.features?.frame_position_y ?? 0,
+                        },
+                      }))}
+                    />
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Detected Damage Details
                       </div>
-                    ))}
-                    <p className="text-[11px] text-slate-400 pt-1">
-                      Priorities marked &quot;rule&quot; are provisional decision-support labels derived from the
-                      documented heuristic, not dataset ground truth.
-                    </p>
+                      {result.detections.map((d: ApiDetection, i: number) => (
+                        <div
+                          key={i}
+                          className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-4 py-3"
+                        >
+                          <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {formatDamageType(d.damage_type)}
+                          </span>
+                          <PriorityBadge priority={d.priority} compact />
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {(d.confidence * 100).toFixed(1)}% confidence
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            bbox {d.bbox.x.toFixed(0)}, {d.bbox.y.toFixed(0)} · {d.bbox.width.toFixed(0)}×
+                            {d.bbox.height.toFixed(0)}
+                          </span>
+                          <span className="ml-auto text-[11px] text-slate-400">
+                            priority source: {d.priority_source}
+                          </span>
+                        </div>
+                      ))}
+                      <p className="text-[11px] text-slate-400 pt-1">
+                        Priorities marked &quot;rule&quot; are provisional decision-support labels derived from the
+                        documented heuristic, not dataset ground truth.
+                      </p>
+                    </div>
                   </div>
                 )}
               </Card>

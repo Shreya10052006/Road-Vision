@@ -51,6 +51,9 @@ export interface Detection {
   lng: number;
   detectedAt: string;
   features: DetectionFeatures;
+  imagePath?: string | null;
+  imageUrl?: string | null;
+  bbox?: { x: number; y: number; width: number; height: number };
 }
 
 export type DataOrigin = "demo" | "real";

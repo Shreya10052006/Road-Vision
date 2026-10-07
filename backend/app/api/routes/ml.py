@@ -80,6 +80,23 @@ async def detect_image(
             tmp_path = tmp.name
         result = ml_service.analyze_image(tmp_path)
 
+        # Generate and save annotated image snapshot
+        import cv2
+        from app.ml.annotate import save_annotated_frame
+
+        img_bgr = cv2.imread(tmp_path)
+        img_id = f"img_{int(time.time() * 1000)}"
+        if img_bgr is not None:
+            frames_dir = settings.upload_dir / "frames"
+            frames_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{img_id}.jpg"
+            dest = frames_dir / filename
+            save_annotated_frame(img_bgr, result["detections"], dest)
+            result["image_url"] = f"/uploads/frames/{filename}"
+            for d in result["detections"]:
+                d["image_path"] = f"/uploads/frames/{filename}"
+                d["image_url"] = f"/uploads/frames/{filename}"
+
         if save:
             inspection = video_service.create_inspection(
                 db,
@@ -96,6 +113,16 @@ async def detect_image(
                     "longitude": longitude,
                 },
             )
+            # Update image filename to match inspection public_id
+            if img_bgr is not None:
+                saved_filename = f"{inspection.public_id}_preview.jpg"
+                saved_dest = settings.upload_dir / "frames" / saved_filename
+                save_annotated_frame(img_bgr, result["detections"], saved_dest)
+                result["image_url"] = f"/uploads/frames/{saved_filename}"
+                for d in result["detections"]:
+                    d["image_path"] = f"/uploads/frames/{saved_filename}"
+                    d["image_url"] = f"/uploads/frames/{saved_filename}"
+
             video_service.persist_damages(db, inspection, result["detections"])
             inspection.frames_processed = 1
             inspection.total_detections = result["detection_count"]

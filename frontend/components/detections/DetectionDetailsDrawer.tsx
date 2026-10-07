@@ -49,20 +49,36 @@ export function DetectionDetailsDrawer({
         <CardSkeleton lines={8} />
       ) : (
         <div className="space-y-6">
-          <div className="relative rounded-xl overflow-hidden aspect-video bg-slate-900 flex items-center justify-center">
-            <Camera size={28} className="text-slate-600" />
-            <div
-              className="absolute border-2 rounded"
-              style={{
-                borderColor: priorityConfig[detection.priority].color,
-                left: "30%",
-                top: "35%",
-                width: "34%",
-                height: "28%",
-              }}
-            />
-            <span className="absolute top-2 left-2">
+          <div className="relative rounded-xl overflow-hidden aspect-video bg-slate-950 flex items-center justify-center border border-border shadow-inner">
+            {detection.imageUrl ? (
+              <img
+                src={detection.imageUrl}
+                alt={`${damageTypeConfig[detection.damageType]?.label ?? detection.damageType}`}
+                className="w-full h-full object-contain bg-black"
+              />
+            ) : (
+              <>
+                <Camera size={28} className="text-slate-600" />
+                <div
+                  className="absolute border-2 rounded"
+                  style={{
+                    borderColor: priorityConfig[detection.priority].color,
+                    left: "30%",
+                    top: "35%",
+                    width: "34%",
+                    height: "28%",
+                  }}
+                />
+              </>
+            )}
+            <span className="absolute top-2 left-2 flex items-center gap-1.5">
               <PriorityBadge priority={detection.priority} />
+              <span className="text-xs font-semibold text-white bg-black/70 backdrop-blur-md px-2 py-0.5 rounded border border-white/10">
+                {damageTypeConfig[detection.damageType]?.label ?? detection.damageType}
+              </span>
+            </span>
+            <span className="absolute bottom-2 right-2 text-xs font-mono text-slate-200 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded border border-white/10">
+              {detection.timestamp}
             </span>
           </div>
 

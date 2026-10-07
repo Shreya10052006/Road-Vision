@@ -18,6 +18,7 @@ import type {
   InspectionStatus,
   Priority,
 } from "@/lib/types";
+import { API_BASE_URL } from "@/lib/api";
 
 export type ApiInspection = {
   id: string;
@@ -60,6 +61,7 @@ export type ApiDetectionRow = {
   priority_confidence: number | null;
   priority_source?: string | null;
   model_version: string | null;
+  image_path?: string | null;
   features: {
     bbox_area_ratio: number | null;
     aspect_ratio: number | null;
@@ -107,6 +109,18 @@ export function mapInspection(
 
 export function mapDetection(api: ApiDetectionRow, road = "—", area = "—"): Detection {
   const when = new Date(api.created_at);
+  const rawPath = api.image_path;
+  const imageUrl = rawPath
+    ? rawPath.startsWith("http")
+      ? rawPath
+      : `${API_BASE_URL}${rawPath.startsWith("/") ? "" : "/"}${rawPath}`
+    : null;
+
+  const bbox =
+    api.bbox_x != null && api.bbox_y != null && api.bbox_width != null && api.bbox_height != null
+      ? { x: api.bbox_x, y: api.bbox_y, width: api.bbox_width, height: api.bbox_height }
+      : undefined;
+
   return {
     id: api.id,
     inspectionId: api.inspection_id,
@@ -124,6 +138,9 @@ export function mapDetection(api: ApiDetectionRow, road = "—", area = "—"): 
     lat: api.latitude ?? 0,
     lng: api.longitude ?? 0,
     detectedAt: when.toISOString(),
+    imagePath: rawPath ?? null,
+    imageUrl,
+    bbox,
     features: {
       bboxAreaRatio: api.features?.bbox_area_ratio ?? 0,
       aspectRatio: api.features?.aspect_ratio ?? 0,

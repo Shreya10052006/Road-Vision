@@ -99,6 +99,8 @@ export type ApiDetection = {
   /** "model" = Random Forest prediction, "rule" = provisional heuristic. */
   priority_source: "model" | "rule";
   model_version: string | null;
+  image_url?: string | null;
+  image_path?: string | null;
 };
 
 export type DetectImageResponse = {
@@ -108,6 +110,7 @@ export type DetectImageResponse = {
   image_width: number;
   image_height: number;
   detection_count: number;
+  image_url?: string | null;
   detections: ApiDetection[];
 };
 
